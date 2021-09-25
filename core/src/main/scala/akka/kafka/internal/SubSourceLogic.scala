@@ -9,7 +9,7 @@ import akka.NotUsed
 import akka.actor.Status
 import akka.actor.{ActorRef, ExtendedActorSystem, Terminated}
 import akka.annotation.InternalApi
-import akka.kafka.internal.KafkaConsumerActor.Internal.RegisterSubStage
+import akka.kafka.internal.KafkaConsumerActor.Internal.{RegisterSubStage, SeekToCommittedOffset}
 import akka.kafka.internal.SubSourceLogic._
 import akka.kafka.{AutoSubscription, ConsumerFailed, ConsumerSettings, RestrictedConsumer}
 import akka.kafka.scaladsl.Consumer.Control
@@ -417,6 +417,8 @@ private abstract class SubSourceStageLogic[K, V, Msg](
     val started = SubSourceStageLogicControl(tp, controlAndActor, filterRevokedPartitionsCB)
     subSourceStartedCb.invoke(started)
     consumerActor.tell(RegisterSubStage(requestMessages.tps), subSourceActor.ref)
+    consumerActor.tell(SeekToCommittedOffset(tp), subSourceActor.ref)
+    buffer = Iterator.empty
   }
 
   protected def messageHandling: PartialFunction[(ActorRef, Any), Unit] = {

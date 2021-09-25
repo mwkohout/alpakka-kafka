@@ -5,10 +5,6 @@
 
 package akka.kafka.internal
 
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.locks.LockSupport
-import java.util.regex.Pattern
-
 import akka.Done
 import akka.actor.Status.Failure
 import akka.actor.{
@@ -22,21 +18,24 @@ import akka.actor.{
   Timers
 }
 import akka.annotation.InternalApi
-import akka.util.JavaDurationConverters._
 import akka.event.LoggingReceive
 import akka.kafka.KafkaConsumerActor.{StopLike, StoppingException}
 import akka.kafka._
 import akka.kafka.scaladsl.PartitionAssignmentHandler
+import akka.util.JavaDurationConverters._
 import com.github.ghik.silencer.silent
 import org.apache.kafka.clients.consumer._
 import org.apache.kafka.common.errors.RebalanceInProgressException
 import org.apache.kafka.common.{Metric, MetricName, TopicPartition}
 
-import scala.jdk.CollectionConverters._
-import scala.concurrent.{ExecutionContext, Future}
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.locks.LockSupport
+import java.util.regex.Pattern
 import scala.concurrent.duration._
-import scala.util.{Success, Try}
+import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
+import scala.util.{Success, Try}
 
 /**
  * Internal API.
@@ -60,6 +59,8 @@ import scala.util.control.NonFatal
         extends SubscriptionRequest
     final case class RegisterSubStage(tps: Set[TopicPartition]) extends NoSerializationVerificationNeeded
     final case class Seek(tps: Map[TopicPartition, Long]) extends NoSerializationVerificationNeeded
+    final case class SeekToCommittedOffset(tps: TopicPartition) extends NoSerializationVerificationNeeded
+
     final case class RequestMessages(requestId: Int, tps: Set[TopicPartition]) extends NoSerializationVerificationNeeded
     val Stop = akka.kafka.KafkaConsumerActor.Stop
     final case class StopFromStage(stageId: String) extends StopLike
@@ -250,7 +251,12 @@ import scala.util.control.NonFatal
       } catch {
         case NonFatal(e) => sendFailure(e, sender())
       }
+    case SeekToCommittedOffset(tp) =>
+      if (consumer.assignment().contains(tp)) {
+        val data = consumer.committed(tp)
 
+        if (data != null) consumer.seek(tp, data.offset()) else -1
+      }
     case p: Poll[_, _] =>
       receivePoll(p)
 
